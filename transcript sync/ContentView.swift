@@ -63,9 +63,7 @@ class TranscriptSyncModel: ObservableObject {
     }
     private var offsets: [Offset] = []
 
-    func loadAudio() async {
-        allSegments.removeAll()
-        offsets.removeAll()
+    func setupAudioPlay() async {
         self.player.replaceCurrentItem(with: AVPlayerItem(url: self.audioURL))
 
         // Observe duration
@@ -97,7 +95,14 @@ class TranscriptSyncModel: ObservableObject {
                 }
             }
         }
-        //return
+    }
+
+    func loadAudio() async {
+        allSegments.removeAll()
+        offsets.removeAll()
+
+        await setupAudioPlay()
+        
         let localeToUse = Locale(identifier: ("en-us"))
         guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
               recognizer.isAvailable
