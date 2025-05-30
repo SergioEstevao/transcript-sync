@@ -85,7 +85,7 @@ class TranscriptSyncModel: ObservableObject {
             else { return }
             let offsetDetected = offsets.first { offset in
                 return time.seconds >= offset.start && time.seconds <= offset.end
-            }
+            } ?? offsets.last
             let adjustedPosition = time.seconds + (offsetDetected?.offset ?? 0)
             let newText = styleText(transcript: transcriptModel, position: adjustedPosition)
             DispatchQueue.main.async {
@@ -163,7 +163,7 @@ class TranscriptSyncModel: ObservableObject {
                     }
                     //Advance Search position
                     currentPosition = cueInRange.characterRange.location
-                    
+
                     let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)
                     let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines)
                     let firstMatch = wordToSearch.components(separatedBy: .whitespacesAndNewlines).first ?? ""
@@ -176,7 +176,7 @@ class TranscriptSyncModel: ObservableObject {
                     }
                     print("Match: `\(wordToSearch)` at: \(allSegments[segmentsPosition].timestamp) cue: \(cueInRange.startTime) inside cue: `\(cueWords)`")
 
-                    let idealPosition = segmentsPosition
+                    let idealPosition = segmentsPosition - i
                     let position: Int
                     if idealPosition >= 0 && idealPosition < allSegments.count {
                         position = idealPosition
@@ -184,7 +184,7 @@ class TranscriptSyncModel: ObservableObject {
                         position = max(0, min(idealPosition - i, allSegments.count - 1))
                     }
                     let adjustShift = position - idealPosition
-                    // Adjust time in cue depending of position of word inside cue
+                    // Adjust time where match was done depending of position of first word matched inside the cue
                     var cueOffsetTime: Double = 0
                     if adjustShift != 0 {
                         cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) / (Double(i) / Double(cueArray.count))
