@@ -117,12 +117,13 @@ class TranscriptSyncModel: ObservableObject {
         request.taskHint = .dictation
         request.addsPunctuation = false
         request.shouldReportPartialResults = false
-        var currentTimestamp: TimeInterval = 0
+
         var totalString = ""
         let wordCount = 4
         var currentPosition = 0
         var previousStartTime: TimeInterval = 0
         var segmentsPosition = 0
+        let startDate = Date.now
         recognizer.recognitionTask(with: request) { [weak self](result, error) in
             guard let self, let result else {
                 return
@@ -144,7 +145,7 @@ class TranscriptSyncModel: ObservableObject {
 
                 while segmentsPosition + wordCount < allSegments.count {
                     let wordToSearch  = allSegments[segmentsPosition...min(segmentsPosition + wordCount, allSegments.count-1)].map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)}).joined(separator: " ")
-                    //            let wordToSearch = allSegments.suffix(wordCount).map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)}).joined(separator: " ")
+
                     let searchString = originalTranscript.string as NSString
                     //Search recognized text inside the original transcript string
                     let range = searchString.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: searchString.length - currentPosition))
@@ -153,7 +154,7 @@ class TranscriptSyncModel: ObservableObject {
                         segmentsPosition += 1
                         continue
                     }
-                    print("Match Found: `\(wordToSearch)`")
+                    //print("Match Found: `\(wordToSearch)`")
                     //we found matching text in the transcript do we have cue for that range
                     guard let cueInRange = transcriptModel?.cues.first(where: { cue in
                         cue.characterRange.intersection(range) != nil
@@ -202,6 +203,9 @@ class TranscriptSyncModel: ObservableObject {
                         }
                     }
                     segmentsPosition += wordCount
+                }
+                if result.isFinal {
+                    print("Finished: \(startDate.timeIntervalSinceNow)s")
                 }
             }
         }
