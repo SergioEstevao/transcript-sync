@@ -144,7 +144,9 @@ class TranscriptSyncModel: ObservableObject {
                 if let metadata = result.speechRecognitionMetadata?.speechStartTimestamp {
                     //print("\(metadata.speechStartTimestamp ?? -1): \(transcription.formattedString)")
                     totalString += "\n" + transcription.formattedString
-                    //generatedTranscript = totalString
+                    DispatchQueue.main.async { [weak self] in
+                        self?.generatedTranscript = totalString
+                    }
                     allSegments.append(contentsOf: transcription.segments)
                 }
                 // Do we have enough recognized words to try to do a search?
@@ -297,10 +299,10 @@ struct ContentView: View {
         VStack {
             AttributedTextView(text: $model.originalTranscript, scrollRange: $model.scrollRange)
             VideoPlayer(player: model.player)
-//                .frame(height: 100)
-//            TextField("Generated", text: $model.generatedTranscript, axis: .vertical)
-//                .textFieldStyle(.roundedBorder)
-//                .frame(height: 200)
+                .frame(height: 100)
+            TextField("Generated", text: $model.generatedTranscript, axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .frame(height: 200)
         }
         .padding()
         .task {
