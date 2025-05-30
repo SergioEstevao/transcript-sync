@@ -5,6 +5,11 @@ import SwiftSubtitles
 
 class TranscriptSyncModel: ObservableObject {
 
+    enum Constants {
+        static let wordsNeededForMatch = 4
+        static let offsetThreadshold: TimeInterval = 5
+    }
+
     @Published var originalTranscript: NSAttributedString = NSAttributedString("Hello")
     @Published var generatedTranscript: String = "Hello"
     @Published var player = AVPlayer()
@@ -77,7 +82,7 @@ class TranscriptSyncModel: ObservableObject {
         }
         //return
         // Add periodic time observer
-        let interval = CMTime(seconds: 0.5,
+        let interval = CMTime(seconds: 1,
                               preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: audioQueue) { [weak self] time in
             guard let self,
@@ -119,7 +124,7 @@ class TranscriptSyncModel: ObservableObject {
         request.shouldReportPartialResults = false
 
         var totalString = ""
-        let wordCount = 4
+        let wordCount = Constants.wordsNeededForMatch
         var currentPosition = 0
         var previousStartTime: TimeInterval = 0
         var segmentsPosition = 0
@@ -175,7 +180,7 @@ class TranscriptSyncModel: ObservableObject {
                         }
                         i += 1
                     }
-                    print("Match: `\(wordToSearch)` at: \(allSegments[segmentsPosition].timestamp) cue: \(cueInRange.startTime) inside cue: `\(cueWords)`")
+                    //print("Match: `\(wordToSearch)` at: \(allSegments[segmentsPosition].timestamp) cue: \(cueInRange.startTime) inside cue: `\(cueWords)`")
 
                     let idealPosition = segmentsPosition - i
                     let position: Int
@@ -191,17 +196,19 @@ class TranscriptSyncModel: ObservableObject {
                         cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) / (Double(i) / Double(cueArray.count))
                     }
                     let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
-                    print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
-                    if abs(self.offset - calculatedOffset) > 3 {
+                    //print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
+                    if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
                         self.offset = calculatedOffset
-                        self.offsets.append(Offset(offset: calculatedOffset, start: previousStartTime, end: cueInRange.endTime))
+                        self.offsets.append(Offset(offset: calculatedOffset, start: cueInRange.startTime, end: cueInRange.endTime))
                     }
                     else {
                         previousStartTime = cueInRange.endTime
                         if let offset = self.offsets.popLast() {
-                            self.offsets.append(Offset(offset:  offset.offset, start: offset.start, end: cueInRange.endTime))
+                            let newOffset = (calculatedOffset + offset.offset) / 2
+                            self.offsets.append(Offset(offset:  newOffset, start: offset.start, end: cueInRange.endTime))
                         }
                     }
+                    print("Offsets:\(offsets)")
                     segmentsPosition += wordCount
                 }
                 if result.isFinal {
