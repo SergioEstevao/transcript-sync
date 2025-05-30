@@ -66,6 +66,10 @@ class TranscriptSyncModel: ObservableObject {
         let offset: TimeInterval
         let start: TimeInterval
         let end: TimeInterval
+
+        var debugdescription: String {
+            return "\(offset): \(start) - \(end)"
+        }
     }
     private var offsets: [Offset] = []
 
@@ -82,7 +86,7 @@ class TranscriptSyncModel: ObservableObject {
         }
         //return
         // Add periodic time observer
-        let interval = CMTime(seconds: 1,
+        let interval = CMTime(seconds: 0.5,
                               preferredTimescale: CMTimeScale(NSEC_PER_SEC))
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: audioQueue) { [weak self] time in
             guard let self,
@@ -148,10 +152,11 @@ class TranscriptSyncModel: ObservableObject {
                     return
                 }
 
+                let searchString = (transcriptModel?.attributedText.string as? NSString) ?? NSString()
+
                 while segmentsPosition + wordCount < allSegments.count {
                     let wordToSearch  = allSegments[segmentsPosition...min(segmentsPosition + wordCount, allSegments.count-1)].map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)}).joined(separator: " ")
 
-                    let searchString = originalTranscript.string as NSString
                     //Search recognized text inside the original transcript string
                     let range = searchString.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: searchString.length - currentPosition))
                     //Did we found the search words?
@@ -170,45 +175,56 @@ class TranscriptSyncModel: ObservableObject {
                     //Advance Search position
                     currentPosition = cueInRange.characterRange.location
 
+                    // Find inside the Cue where the match position is located
                     let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)
-                    let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines)
-                    let firstMatch = wordToSearch.components(separatedBy: .whitespacesAndNewlines).first ?? ""
+                    let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
+                    let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
                     var i = 0
                     while i < cueArray.count {
-                        if cueArray[i] == firstMatch {
+                        var j = 0
+                        var match = true
+                        while j < searchArray.count  && i+j < cueArray.count {
+                            match = match && (cueArray[i+j] == searchArray[j])
+                            j += 1
+                        }
+                        if match {
                             break
                         }
                         i += 1
                     }
-                    //print("Match: `\(wordToSearch)` at: \(allSegments[segmentsPosition].timestamp) cue: \(cueInRange.startTime) inside cue: `\(cueWords)`")
 
                     let idealPosition = segmentsPosition - i
-                    let position: Int
+                    var position = segmentsPosition
                     if idealPosition >= 0 && idealPosition < allSegments.count {
                         position = idealPosition
-                    } else {
-                        position = max(0, min(idealPosition - i, allSegments.count - 1))
                     }
                     let adjustShift = position - idealPosition
                     // Adjust time where match was done depending of position of first word matched inside the cue
                     var cueOffsetTime: Double = 0
-                    if adjustShift != 0 {
-                        cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) / (Double(i) / Double(cueArray.count))
+                    if adjustShift != 0, i != 0, i < cueArray.count {
+                        cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
                     }
                     let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
                     //print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
                     if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
+                        print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
                         self.offset = calculatedOffset
                         self.offsets.append(Offset(offset: calculatedOffset, start: cueInRange.startTime, end: cueInRange.endTime))
+                        print("-----> Offsets Start <------")
+                        offsets.forEach {
+                            print($0)
+                        }
+                        print("-----> Offsets End <------\n")
                     }
                     else {
                         previousStartTime = cueInRange.endTime
                         if let offset = self.offsets.popLast() {
                             let newOffset = (calculatedOffset + offset.offset) / 2
+                            self.offset = newOffset
                             self.offsets.append(Offset(offset:  newOffset, start: offset.start, end: cueInRange.endTime))
                         }
                     }
-                    print("Offsets:\(offsets)")
+
                     segmentsPosition += wordCount
                 }
                 if result.isFinal {
@@ -281,10 +297,10 @@ struct ContentView: View {
         VStack {
             AttributedTextView(text: $model.originalTranscript, scrollRange: $model.scrollRange)
             VideoPlayer(player: model.player)
-                .frame(height: 100)
-            TextField("Generated", text: $model.generatedTranscript, axis: .vertical)
-                .textFieldStyle(.roundedBorder)
-                .frame(height: 200)
+//                .frame(height: 100)
+//            TextField("Generated", text: $model.generatedTranscript, axis: .vertical)
+//                .textFieldStyle(.roundedBorder)
+//                .frame(height: 200)
         }
         .padding()
         .task {

@@ -88,7 +88,7 @@ struct TranscriptModel: Sendable {
                 tokens.append(String(filteredText[tokenRange]))
                 return true
             }
-
+            tokens.append(" ")
             let attributedText = NSAttributedString(string: tokens.joined(separator: " "))
             let startPosition = resultText.length
             let endPosition = attributedText.length
