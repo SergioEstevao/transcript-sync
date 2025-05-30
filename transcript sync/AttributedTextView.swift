@@ -7,7 +7,9 @@ struct AttributedTextView: UIViewRepresentable {
     @Binding var scrollRange: NSRange
 
     func makeUIView(context: Context) -> UITextView {
-        return UITextView()
+        let view = UITextView()
+        view.isEditable = false
+        return view
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
