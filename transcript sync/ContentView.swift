@@ -113,6 +113,10 @@ class TranscriptSyncModel: ObservableObject {
 
         await setupAudioPlay()
 
+        setupSpeechRecognition()
+    }
+
+    func setupSpeechRecognition() {
         let localeToUse = Locale(identifier: ("en-us"))
         guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
               recognizer.isAvailable
@@ -130,7 +134,6 @@ class TranscriptSyncModel: ObservableObject {
         var totalString = ""
         let wordCount = Constants.wordsNeededForMatch
         var currentPosition = 0
-        var previousStartTime: TimeInterval = 0
         var segmentsPosition = 0
         let startDate = Date.now
         recognizer.recognitionTask(with: request) { [weak self](result, error) in
@@ -208,7 +211,7 @@ class TranscriptSyncModel: ObservableObject {
                         print("-----> Offsets End <------\n")
                     }
                     else {
-                        previousStartTime = cueInRange.endTime
+                        //previousStartTime = cueInRange.endTime
                         if let offset = self.offsets.popLast() {
                             let newOffset = (calculatedOffset + offset.offset) / 2
                             self.offset = newOffset
