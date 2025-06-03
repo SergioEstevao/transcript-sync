@@ -141,8 +141,8 @@ class TranscriptSyncModel: ObservableObject {
                 guard let self else { return }
                 let transcription = result.bestTranscription
                 // Only when metadata is available this partial transcript is established
-                if let metadata = result.speechRecognitionMetadata?.speechStartTimestamp {
-                    //print("\(metadata.speechStartTimestamp ?? -1): \(transcription.formattedString)")
+                if let metadata = result.speechRecognitionMetadata {
+                    print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
                     totalString += "\n" + transcription.formattedString
                     DispatchQueue.main.async { [weak self] in
                         self?.generatedTranscript = totalString
@@ -181,19 +181,8 @@ class TranscriptSyncModel: ObservableObject {
                     let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)
                     let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
                     let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
-                    var i = 0
-                    while i < cueArray.count {
-                        var j = 0
-                        var match = true
-                        while j < searchArray.count  && i+j < cueArray.count {
-                            match = match && (cueArray[i+j] == searchArray[j])
-                            j += 1
-                        }
-                        if match {
-                            break
-                        }
-                        i += 1
-                    }
+
+                    let i = indexOf(searchArray, inside: cueArray)
 
                     let idealPosition = segmentsPosition - i
                     var position = segmentsPosition
@@ -234,6 +223,23 @@ class TranscriptSyncModel: ObservableObject {
                 }
             }
         }
+    }
+
+    func indexOf(_ toSearch: [String], inside other: [String]) -> Int {
+        var i = 0
+        while i < toSearch.count {
+            var j = 0
+            var match = true
+            while j < toSearch.count  && i+j < other.count {
+                match = match && (other[i+j] == toSearch[j])
+                j += 1
+            }
+            if match {
+                break
+            }
+            i += 1
+        }
+        return i
     }
 
     var previousRange: NSRange?
