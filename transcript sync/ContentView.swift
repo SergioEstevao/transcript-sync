@@ -27,7 +27,11 @@ class TranscriptSyncModel: ObservableObject {
     var tokenModel: TranscriptModel?
 
     let audioQueue = DispatchQueue(label: "audioQueue")
-    let transcriptQueue = DispatchQueue(label: "transcriptQueue")
+    let transcriptQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
 
     init(audioURL: URL, transcriptURL: URL) {
         self.audioURL = audioURL
@@ -117,11 +121,11 @@ class TranscriptSyncModel: ObservableObject {
     }
     private var offsets: [Offset] = []
 
-    var totalString = "" {
+    var speechRecognizedText = "" {
         didSet {
             DispatchQueue.main.async { [weak self] in
                 guard let self else  { return }
-                generatedTranscript = totalString
+                generatedTranscript = speechRecognizedText
             }
         }
     }
@@ -136,6 +140,7 @@ class TranscriptSyncModel: ObservableObject {
         else {
             return
         }
+        recognizer.queue = transcriptQueue
         recognizer.defaultTaskHint = .dictation
         // Create and execute a speech recognition request for the audio file at the URL.
         let request = SFSpeechURLRecognitionRequest(url: audioURL)
@@ -152,11 +157,9 @@ class TranscriptSyncModel: ObservableObject {
                 }
                 return
             }
-            transcriptQueue.async { [weak self] in
-                self?.handleRecognitionResult(result, locale: localeToUse)
-                if result.isFinal {
-                    print("Finished: \(startDate.timeIntervalSinceNow)s")
-                }
+            handleRecognitionResult(result, locale: localeToUse)
+            if result.isFinal {
+                print("Finished: \(startDate.timeIntervalSinceNow)s")
             }
         }
     }
@@ -167,7 +170,7 @@ class TranscriptSyncModel: ObservableObject {
         // Only when metadata is available this partial transcript is established
         if let metadata = result.speechRecognitionMetadata {
             print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
-            totalString += "\n" + transcription.formattedString
+            speechRecognizedText += "\n" + transcription.formattedString
             allSegments.append(contentsOf: transcription.segments)
         }
         // Do we have enough recognized words to try to do a search?
@@ -175,13 +178,13 @@ class TranscriptSyncModel: ObservableObject {
             return
         }
 
-        let searchString = (transcriptModel?.attributedText.string as? NSString) ?? NSString()
+        let referenceTranscriptText = (transcriptModel?.attributedText.string as? NSString) ?? NSString()
 
         while segmentsPosition + wordCount < allSegments.count {
             let wordToSearch  = allSegments[segmentsPosition...min(segmentsPosition + wordCount, allSegments.count-1)].map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)}).joined(separator: " ")
 
             //Search recognized text inside the original transcript string
-            let range = searchString.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: searchString.length - currentPosition))
+            let range = referenceTranscriptText.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: referenceTranscriptText.length - currentPosition))
             //Did we found the search words?
             if range.location == NSNotFound {
                 segmentsPosition += 1
@@ -199,7 +202,7 @@ class TranscriptSyncModel: ObservableObject {
             currentPosition = cueInRange.characterRange.location
 
             // Find inside the Cue where the match position is located
-            let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)
+            let cueWords = referenceTranscriptText.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)
             let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
             let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
 
