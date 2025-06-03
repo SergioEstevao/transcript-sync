@@ -136,7 +136,8 @@ class TranscriptSyncModel: ObservableObject {
     func setupSpeechRecognition() {
         let localeToUse = Locale(identifier: ("en-us"))
         guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
-              recognizer.isAvailable
+              recognizer.isAvailable,
+              recognizer.supportsOnDeviceRecognition
         else {
             return
         }
