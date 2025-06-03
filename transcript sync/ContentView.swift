@@ -186,20 +186,16 @@ class TranscriptSyncModel: ObservableObject {
 
             //Search recognized text inside the original transcript string
             let range = referenceTranscriptText.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: referenceTranscriptText.length - currentPosition))
-            //Did we found the search words?
-            if range.location == NSNotFound {
+
+            guard range.location != NSNotFound,//Did we found the search words?
+                  //we found matching text in the transcript do we have cue for that range
+                  let cueInRange = transcriptModel?.cues.first(where: { $0.characterRange.intersection(range) != nil} )
+            else {
                 segmentsPosition += 1
                 continue
             }
-            //print("Match Found: `\(wordToSearch)`")
-            //we found matching text in the transcript do we have cue for that range
-            guard let cueInRange = transcriptModel?.cues.first(where: { cue in
-                cue.characterRange.intersection(range) != nil
-            }) else {
-                segmentsPosition += 1
-                continue
-            }
-            //Advance Search position
+
+            //Advance Search position to beginning of the cue we found
             currentPosition = cueInRange.characterRange.location
 
             // Find inside the Cue where the match position is located
