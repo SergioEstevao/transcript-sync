@@ -1,7 +1,9 @@
 import SwiftUI
-import Speech
 import AVKit
+
+import Speech
 import SwiftSubtitles
+import NaturalLanguage
 
 class TranscriptSyncModel: ObservableObject {
 
@@ -134,10 +136,14 @@ class TranscriptSyncModel: ObservableObject {
     var segmentsPosition = 0
 
     func setupSpeechRecognition() {
-        let localeToUse = Locale(identifier: ("en-us"))
+        var localeToUse = Locale(identifier: ("en-us"))
+        if let text = transcriptModel?.attributedText.string,
+           let nlLanguage = NLLanguageRecognizer.dominantLanguage(for: text) {
+            localeToUse = Locale(identifier: nlLanguage.rawValue)
+        }
+
         guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
-              recognizer.isAvailable,
-              recognizer.supportsOnDeviceRecognition
+              recognizer.isAvailable
         else {
             return
         }
@@ -145,10 +151,10 @@ class TranscriptSyncModel: ObservableObject {
         recognizer.defaultTaskHint = .dictation
         // Create and execute a speech recognition request for the audio file at the URL.
         let request = SFSpeechURLRecognitionRequest(url: audioURL)
-        request.requiresOnDeviceRecognition = true
+        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         request.taskHint = .dictation
         request.addsPunctuation = false
-        request.shouldReportPartialResults = false
+        request.shouldReportPartialResults = !recognizer.supportsOnDeviceRecognition
 
         let startDate = Date.now
         recognizer.recognitionTask(with: request) { [weak self](result, error) in
@@ -170,10 +176,12 @@ class TranscriptSyncModel: ObservableObject {
         let transcription = result.bestTranscription
         // Only when metadata is available this partial transcript is established
         if let metadata = result.speechRecognitionMetadata {
-            print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
+            //print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
             speechRecognizedText += "\n" + transcription.formattedString
-            allSegments.append(contentsOf: transcription.segments)
         }
+        allSegments.append(contentsOf: transcription.segments.filter({ segment in
+            return segment.timestamp > 0 && segment.duration > 0
+        }))
         // Do we have enough recognized words to try to do a search?
         guard allSegments.count > 0, allSegments.count >= wordCount else {
             return
@@ -231,9 +239,9 @@ class TranscriptSyncModel: ObservableObject {
             else {
                 //previousStartTime = cueInRange.endTime
                 if let offset = self.offsets.popLast() {
-                    let newOffset = (calculatedOffset + offset.offset) / 2
-                    self.offset = newOffset
-                    self.offsets.append(Offset(offset:  newOffset, start: offset.start, end: cueInRange.endTime))
+                    //let newOffset = (calculatedOffset + offset.offset) / 2
+                    //self.offset = newOffset
+                    self.offsets.append(Offset(offset:  self.offset, start: offset.start, end: cueInRange.endTime))
                 }
             }
             segmentsPosition += wordCount
@@ -315,7 +323,7 @@ class TranscriptSyncModel: ObservableObject {
 
 struct ContentView: View {
 
-    @StateObject private var model = TranscriptSyncModel(audioString: "Adidas_v_Puma_Battle.mp3", transcriptString: "Adidas_v_Puma_Battle.vtt")!
+    @StateObject private var model = TranscriptSyncModel(audioString: "mixordia_03_06_2025.mp3", transcriptString: "mixordia_03_06_2025.vtt")!
 
     var body: some View {
         VStack {
