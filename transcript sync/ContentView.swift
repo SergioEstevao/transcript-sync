@@ -61,18 +61,6 @@ class TranscriptSyncModel: ObservableObject {
         }
     }
 
-    private var allSegments: [SFTranscriptionSegment] = []
-    struct Offset {
-        let offset: TimeInterval
-        let start: TimeInterval
-        let end: TimeInterval
-
-        var debugdescription: String {
-            return "\(offset): \(start) - \(end)"
-        }
-    }
-    private var offsets: [Offset] = []
-
     func setupAudioPlay() async {
         self.player.replaceCurrentItem(with: AVPlayerItem(url: self.audioURL))
 
@@ -116,6 +104,31 @@ class TranscriptSyncModel: ObservableObject {
         setupSpeechRecognition()
     }
 
+    private var allSegments: [SFTranscriptionSegment] = []
+
+    struct Offset {
+        let offset: TimeInterval
+        let start: TimeInterval
+        let end: TimeInterval
+
+        var debugdescription: String {
+            return "\(offset): \(start) - \(end)"
+        }
+    }
+    private var offsets: [Offset] = []
+
+    var totalString = "" {
+        didSet {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else  { return }
+                generatedTranscript = totalString
+            }
+        }
+    }
+    let wordCount = Constants.wordsNeededForMatch
+    var currentPosition = 0
+    var segmentsPosition = 0
+
     func setupSpeechRecognition() {
         let localeToUse = Locale(identifier: ("en-us"))
         guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
@@ -131,102 +144,102 @@ class TranscriptSyncModel: ObservableObject {
         request.addsPunctuation = false
         request.shouldReportPartialResults = false
 
-        var totalString = ""
-        let wordCount = Constants.wordsNeededForMatch
-        var currentPosition = 0
-        var segmentsPosition = 0
         let startDate = Date.now
         recognizer.recognitionTask(with: request) { [weak self](result, error) in
             guard let self, let result else {
+                if let error = error {
+                    print(error)
+                }
                 return
             }
             transcriptQueue.async { [weak self] in
-                guard let self else { return }
-                let transcription = result.bestTranscription
-                // Only when metadata is available this partial transcript is established
-                if let metadata = result.speechRecognitionMetadata {
-                    print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
-                    totalString += "\n" + transcription.formattedString
-                    DispatchQueue.main.async { [weak self] in
-                        self?.generatedTranscript = totalString
-                    }
-                    allSegments.append(contentsOf: transcription.segments)
-                }
-                // Do we have enough recognized words to try to do a search?
-                guard allSegments.count > 0, allSegments.count >= wordCount else {
-                    return
-                }
-
-                let searchString = (transcriptModel?.attributedText.string as? NSString) ?? NSString()
-
-                while segmentsPosition + wordCount < allSegments.count {
-                    let wordToSearch  = allSegments[segmentsPosition...min(segmentsPosition + wordCount, allSegments.count-1)].map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)}).joined(separator: " ")
-
-                    //Search recognized text inside the original transcript string
-                    let range = searchString.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: searchString.length - currentPosition))
-                    //Did we found the search words?
-                    if range.location == NSNotFound {
-                        segmentsPosition += 1
-                        continue
-                    }
-                    //print("Match Found: `\(wordToSearch)`")
-                    //we found matching text in the transcript do we have cue for that range
-                    guard let cueInRange = transcriptModel?.cues.first(where: { cue in
-                        cue.characterRange.intersection(range) != nil
-                    }) else {
-                        segmentsPosition += 1
-                        continue
-                    }
-                    //Advance Search position
-                    currentPosition = cueInRange.characterRange.location
-
-                    // Find inside the Cue where the match position is located
-                    let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: localeToUse)
-                    let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
-                    let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
-
-                    let i = indexOf(searchArray, inside: cueArray)
-
-                    let idealPosition = segmentsPosition - i
-                    var position = segmentsPosition
-                    if idealPosition >= 0 && idealPosition < allSegments.count {
-                        position = idealPosition
-                    }
-                    let adjustShift = position - idealPosition
-                    // Adjust time where match was done depending of position of first word matched inside the cue
-                    var cueOffsetTime: Double = 0
-                    if adjustShift != 0, i != 0, i < cueArray.count {
-                        cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
-                    }
-                    let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
-                    //print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
-                    if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
-                        print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
-                        self.offset = calculatedOffset
-                        self.offsets.append(Offset(offset: calculatedOffset, start: cueInRange.startTime, end: cueInRange.endTime))
-                        print("-----> Offsets Start <------")
-                        offsets.forEach {
-                            print($0)
-                        }
-                        print("-----> Offsets End <------\n")
-                    }
-                    else {
-                        //previousStartTime = cueInRange.endTime
-                        if let offset = self.offsets.popLast() {
-                            let newOffset = (calculatedOffset + offset.offset) / 2
-                            self.offset = newOffset
-                            self.offsets.append(Offset(offset:  newOffset, start: offset.start, end: cueInRange.endTime))
-                        }
-                    }
-
-                    segmentsPosition += wordCount
-                }
+                self?.handleRecognitionResult(result, locale: localeToUse)
                 if result.isFinal {
                     print("Finished: \(startDate.timeIntervalSinceNow)s")
                 }
             }
         }
     }
+
+    func handleRecognitionResult(_ result: SFSpeechRecognitionResult, locale: Locale) {
+
+        let transcription = result.bestTranscription
+        // Only when metadata is available this partial transcript is established
+        if let metadata = result.speechRecognitionMetadata {
+            print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
+            totalString += "\n" + transcription.formattedString
+            allSegments.append(contentsOf: transcription.segments)
+        }
+        // Do we have enough recognized words to try to do a search?
+        guard allSegments.count > 0, allSegments.count >= wordCount else {
+            return
+        }
+
+        let searchString = (transcriptModel?.attributedText.string as? NSString) ?? NSString()
+
+        while segmentsPosition + wordCount < allSegments.count {
+            let wordToSearch  = allSegments[segmentsPosition...min(segmentsPosition + wordCount, allSegments.count-1)].map({$0.substring.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)}).joined(separator: " ")
+
+            //Search recognized text inside the original transcript string
+            let range = searchString.range(of: wordToSearch, options: [.diacriticInsensitive, .caseInsensitive], range:NSRange(location: currentPosition, length: searchString.length - currentPosition))
+            //Did we found the search words?
+            if range.location == NSNotFound {
+                segmentsPosition += 1
+                continue
+            }
+            //print("Match Found: `\(wordToSearch)`")
+            //we found matching text in the transcript do we have cue for that range
+            guard let cueInRange = transcriptModel?.cues.first(where: { cue in
+                cue.characterRange.intersection(range) != nil
+            }) else {
+                segmentsPosition += 1
+                continue
+            }
+            //Advance Search position
+            currentPosition = cueInRange.characterRange.location
+
+            // Find inside the Cue where the match position is located
+            let cueWords = searchString.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)
+            let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
+            let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
+
+            let i = indexOf(searchArray, inside: cueArray)
+
+            let idealPosition = segmentsPosition - i
+            var position = segmentsPosition
+            if idealPosition >= 0 && idealPosition < allSegments.count {
+                position = idealPosition
+            }
+            let adjustShift = position - idealPosition
+            // Adjust time where match was done depending of position of first word matched inside the cue
+            var cueOffsetTime: Double = 0
+            if adjustShift != 0, i != 0, i < cueArray.count {
+                cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
+            }
+            let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
+            //print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
+            if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
+                print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
+                self.offset = calculatedOffset
+                self.offsets.append(Offset(offset: calculatedOffset, start: cueInRange.startTime, end: cueInRange.endTime))
+                print("-----> Offsets Start <------")
+                offsets.forEach {
+                    print($0)
+                }
+                print("-----> Offsets End <------\n")
+            }
+            else {
+                //previousStartTime = cueInRange.endTime
+                if let offset = self.offsets.popLast() {
+                    let newOffset = (calculatedOffset + offset.offset) / 2
+                    self.offset = newOffset
+                    self.offsets.append(Offset(offset:  newOffset, start: offset.start, end: cueInRange.endTime))
+                }
+            }
+            segmentsPosition += wordCount
+        }
+    }
+
 
     func indexOf(_ toSearch: [String], inside other: [String]) -> Int {
         var i = 0
