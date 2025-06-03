@@ -225,26 +225,23 @@ class TranscriptSyncModel: ObservableObject {
                 cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
             }
             let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
-            //print("Offset at: \(allSegments[position].timestamp) -> \(calculatedOffset)")
+            print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
             if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
-                print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
                 self.offset = calculatedOffset
-                self.offsets.append(Offset(offset: calculatedOffset, start: cueInRange.startTime, end: cueInRange.endTime))
-                print("-----> Offsets Start <------")
-                offsets.forEach {
-                    print($0)
-                }
-                print("-----> Offsets End <------\n")
+                let startTime = self.offsets.isEmpty ? 0 : cueInRange.startTime
+                self.offsets.append(Offset(offset: calculatedOffset, start: startTime, end: cueInRange.endTime))
+                printOfssets()
             }
-            else {
-                //previousStartTime = cueInRange.endTime
+            else {                
                 if let offset = self.offsets.popLast() {
-                    //let newOffset = (calculatedOffset + offset.offset) / 2
-                    //self.offset = newOffset
                     self.offsets.append(Offset(offset:  self.offset, start: offset.start, end: cueInRange.endTime))
                 }
             }
             segmentsPosition += wordCount
+        }
+        if result.isFinal, let offset = self.offsets.popLast(), let lastSegment = transcription.segments.last {
+            self.offsets.append(Offset(offset:  self.offset, start: offset.start, end: lastSegment.timestamp + lastSegment.duration))
+            printOfssets()
         }
     }
 
@@ -264,6 +261,14 @@ class TranscriptSyncModel: ObservableObject {
             i += 1
         }
         return i
+    }
+
+    func printOfssets() {
+        print("-----> Offsets Start <------")
+        offsets.forEach {
+            print($0)
+        }
+        print("-----> Offsets End <------\n")
     }
 
     var previousRange: NSRange?
