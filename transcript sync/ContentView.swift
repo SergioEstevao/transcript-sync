@@ -18,7 +18,7 @@ class TranscriptSyncModel: ObservableObject {
 
     @Published var currentTime: Double = 0
     @Published var duration: Double = 1
-    var offset: Double = 0
+
     @Published var scrollRange: NSRange = NSRange(location: NSNotFound, length: 0)
 
     private var timeObserverToken: Any?
@@ -203,52 +203,61 @@ class TranscriptSyncModel: ObservableObject {
                 continue
             }
 
-            //Advance Search position to beginning of the cue we found
-            currentPosition = cueInRange.characterRange.location
-
             // Find inside the Cue where the match position is located
             let cueWords = referenceTranscriptText.substring(with: cueInRange.characterRange).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: locale)
             let cueArray = cueWords.components(separatedBy: .whitespacesAndNewlines).map { $0.trimmingCharacters(in: .punctuationCharacters)}.filter { !$0.isEmpty}
             let searchArray = wordToSearch.components(separatedBy: .whitespacesAndNewlines)
 
-            let i = indexOf(searchArray, inside: cueArray)
-
-            let idealPosition = segmentsPosition - i
             var position = segmentsPosition
-            if idealPosition >= 0 && idealPosition < allSegments.count {
-                position = idealPosition
-            }
-            let adjustShift = position - idealPosition
-            // Adjust time where match was done depending of position of first word matched inside the cue
             var cueOffsetTime: Double = 0
-            if adjustShift != 0, i != 0, i < cueArray.count {
-                cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
+            var cuePosition = -1
+            if let i = indexOf(searchArray, inside: cueArray) {
+                cuePosition = i
+                let idealPosition = segmentsPosition - i
+                if idealPosition >= 0 && idealPosition < allSegments.count {
+                    position = idealPosition
+                }
+                let adjustShift = position - idealPosition
+                // Adjust time where match was done depending of position of first word matched inside the cue
+                if adjustShift != 0, i != 0, i < cueArray.count {
+                    cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
+                }
+            } else {
+                segmentsPosition += 1
+                continue
             }
+
             let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
-            print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(i)")
-            if abs(self.offset - calculatedOffset) > Constants.offsetThreadshold {
-                self.offset = calculatedOffset
-                let startTime = self.offsets.isEmpty ? 0 : cueInRange.startTime
+            print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(cuePosition))")
+            if self.offsets.isEmpty {
+                self.offsets.append(Offset(offset: calculatedOffset, start: 0, end: cueInRange.endTime))
+                printOfssets()
+            }
+            else if let offset = self.offsets.last, abs(offset.offset - calculatedOffset) > Constants.offsetThreadshold {
+                let startTime = cueInRange.startTime
                 self.offsets.append(Offset(offset: calculatedOffset, start: startTime, end: cueInRange.endTime))
                 printOfssets()
             }
-            else {                
+            else {
                 if let offset = self.offsets.popLast() {
-                    self.offsets.append(Offset(offset:  self.offset, start: offset.start, end: cueInRange.endTime))
+                    self.offsets.append(Offset(offset:  offset.offset, start: offset.start, end: cueInRange.endTime))
                 }
             }
+
+            //Advance Search position to beginning of the cue we found
+            currentPosition = cueInRange.characterRange.location
             segmentsPosition += wordCount
         }
         if result.isFinal, let offset = self.offsets.popLast(), let lastSegment = transcription.segments.last {
-            self.offsets.append(Offset(offset:  self.offset, start: offset.start, end: lastSegment.timestamp + lastSegment.duration))
+            self.offsets.append(Offset(offset:  offset.offset, start: offset.start, end: lastSegment.timestamp + lastSegment.duration))
             printOfssets()
         }
     }
 
 
-    func indexOf(_ toSearch: [String], inside other: [String]) -> Int {
+    func indexOf(_ toSearch: [String], inside other: [String]) -> Int? {
         var i = 0
-        while i < toSearch.count {
+        while i < other.count {
             var j = 0
             var match = true
             while j < toSearch.count  && i+j < other.count {
@@ -256,11 +265,11 @@ class TranscriptSyncModel: ObservableObject {
                 j += 1
             }
             if match {
-                break
+                return i
             }
             i += 1
         }
-        return i
+        return nil
     }
 
     func printOfssets() {
@@ -328,7 +337,7 @@ class TranscriptSyncModel: ObservableObject {
 
 struct ContentView: View {
 
-    @StateObject private var model = TranscriptSyncModel(audioString: "mixordia_03_06_2025.mp3", transcriptString: "mixordia_03_06_2025.vtt")!
+    @StateObject private var model = TranscriptSyncModel(audioString: "TheRestIsHistory-570.mp3", transcriptString: "TheRestIsHistory-570.vtt")!
 
     var body: some View {
         VStack {
