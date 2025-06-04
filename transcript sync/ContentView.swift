@@ -222,13 +222,21 @@ class TranscriptSyncModel: ObservableObject {
                 if adjustShift != 0, i != 0, i < cueArray.count {
                     cueOffsetTime = (cueInRange.endTime - cueInRange.startTime) * (Double(cueArray.prefix(adjustShift).joined(separator: " ").count) / Double(cueInRange.characterRange.length))
                 }
-            } else {
-                segmentsPosition += 1
-                continue
+            }
+            else {
+                if range.union(cueInRange.characterRange) == cueInRange.characterRange {
+
+                }
+                else if range.location < cueInRange.characterRange.location + cueInRange.characterRange.length {
+                    cueOffsetTime = cueInRange.endTime - cueInRange.startTime
+                }
+                else {
+                    cueOffsetTime = 0
+                }
             }
 
             let calculatedOffset = (cueInRange.startTime + cueOffsetTime) - allSegments[position].timestamp
-            print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) in cue: \(cueInRange.startTime) inside cue: `\(cueArray)` position: \(cuePosition))")
+            print("Match audio: `\(searchArray)` at: \(allSegments[segmentsPosition].timestamp) inside cue: `\(cueArray)` that starts at: \(cueInRange.startTime) in position: \(cuePosition))")
             if self.offsets.isEmpty {
                 self.offsets.append(Offset(offset: calculatedOffset, start: 0, end: cueInRange.endTime))
                 printOfssets()
