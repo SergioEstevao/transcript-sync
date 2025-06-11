@@ -103,16 +103,22 @@ class TranscriptSyncModelLocal: ObservableObject {
         let currentLength = (generatedTranscript as NSString).length
         generatedTranscript += newText
 
+        var addedNewWords = false
+
         for run in result.text.runs {
             guard let audioTimeRange = run.audioTimeRange else { continue }
             let timeRange = audioTimeRange.start.seconds...audioTimeRange.end.seconds
             let nsRange = NSRange(run.range, in: result.text)
             let adjustedRange = NSRange(location: currentLength + nsRange.location, length: nsRange.length)
             timedWords.append(TimedWord(timeRange: timeRange, characterRange: adjustedRange))
+            addedNewWords = true
         }
 
-        DispatchQueue.main.async {
-            self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: nil)
+        if addedNewWords && highlightedTranscript.length == 0 {
+            // First time we have a transcript: initialize it
+            DispatchQueue.main.async {
+                self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: nil)
+            }
         }
     }
 
