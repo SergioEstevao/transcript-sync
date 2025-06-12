@@ -5,7 +5,7 @@ import SwiftSubtitles
 class TranscriptSyncModelLocal: ObservableObject {
 
     struct TimedWord {
-        let timeRange: ClosedRange<Double>
+        let timeRange: CMTimeRange
         let characterRange: NSRange
     }
 
@@ -59,7 +59,7 @@ class TranscriptSyncModelLocal: ObservableObject {
             let currentTime = time.seconds
 
             // Find the index of the word that is currently active
-            guard let index = self.timedWords.indices.last(where: { self.timedWords[$0].timeRange.lowerBound <= currentTime }) else {
+            guard let index = self.timedWords.indices.last(where: { self.timedWords[$0].timeRange.containsTime(self.player.currentTime()) }) else {
                 DispatchQueue.main.async {
                     self.currentTime = currentTime
                 }
@@ -67,17 +67,19 @@ class TranscriptSyncModelLocal: ObservableObject {
             }
 
             let currentWord = self.timedWords[index]
-            let nextWordStart = (index + 1 < self.timedWords.count) ? self.timedWords[index + 1].timeRange.lowerBound : .greatestFiniteMagnitude
 
             // Stay on this word until the next one starts
-            if currentTime < nextWordStart {
-                if self.lastHighlightedRange != currentWord.characterRange {
-                    DispatchQueue.main.async {
-                        self.currentTime = currentTime
-                        self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: currentWord.characterRange)
-                        self.scrollRange = currentWord.characterRange
-                        self.lastHighlightedRange = currentWord.characterRange
-                    }
+            if let range = Range(currentWord.characterRange, in: generatedTranscript) {
+                let text = generatedTranscript[range]
+                print("Word: \(text) - Time: \(currentTime) - Range: \(self.timedWords[index].timeRange.start.seconds)-\(self.timedWords[index].timeRange.duration.seconds)")
+            }
+
+            if self.lastHighlightedRange != currentWord.characterRange {
+                DispatchQueue.main.async {
+                    self.currentTime = currentTime
+                    self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: currentWord.characterRange)
+                    self.scrollRange = currentWord.characterRange
+                    self.lastHighlightedRange = currentWord.characterRange
                 }
             }
         }
@@ -87,36 +89,36 @@ class TranscriptSyncModelLocal: ObservableObject {
         timedWords.removeAll()
         await setupAudioPlay()
 
-        let sequence = try! await setupSpeechAnalysis(from: player)
+        Task.detached(priority: .userInitiated) {
+            let sequence = try! await self.setupSpeechAnalysis(from: self.player)
 
-        do {
-            for try await result in sequence {
-                handleRecognitionResult(result)
+            do {
+                for try await result in sequence {
+                    self.handleRecognitionResult(result)
+                }
+            } catch {
+                print("Error during speech analysis: \(error)")
             }
-        } catch {
-            print("Error during speech analysis: \(error)")
         }
     }
 
     func handleRecognitionResult(_ result: SpeechTranscriber.Result) {
         let newText = result.substring + "\n"
         let currentLength = (generatedTranscript as NSString).length
-        generatedTranscript += newText
 
-        var addedNewWords = false
-
+        var newTimedWords: [TimedWord] = []
         for run in result.text.runs {
             guard let audioTimeRange = run.audioTimeRange else { continue }
-            let timeRange = audioTimeRange.start.seconds...audioTimeRange.end.seconds
             let nsRange = NSRange(run.range, in: result.text)
             let adjustedRange = NSRange(location: currentLength + nsRange.location, length: nsRange.length)
-            timedWords.append(TimedWord(timeRange: timeRange, characterRange: adjustedRange))
-            addedNewWords = true
+            newTimedWords.append(TimedWord(timeRange: audioTimeRange, characterRange: adjustedRange))
         }
 
-        if addedNewWords && highlightedTranscript.length == 0 {
-            // First time we have a transcript: initialize it
-            DispatchQueue.main.async {
+        DispatchQueue.main.async {
+            self.generatedTranscript += newText
+            self.timedWords.append(contentsOf: newTimedWords)
+
+            if !newTimedWords.isEmpty && self.highlightedTranscript.length == 0 {
                 self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: nil)
             }
         }
@@ -143,7 +145,9 @@ class TranscriptSyncModelLocal: ObservableObject {
         // In theory, if we have the cached download, we could simplify this and not need to do any of the AVAssetReader stuff.
 
         let locale = Locale(identifier: "en-us")
-        let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedLiveCaptioning)
+        var preset: SpeechTranscriber.Preset = .offlineTranscription
+        preset.attributeOptions = [.audioTimeRange]
+        let transcriber = SpeechTranscriber(locale: locale, preset: preset)
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
@@ -191,5 +195,12 @@ class TranscriptSyncModelLocal: ObservableObject {
         }
 
         return transcriber.results
+    }
+
+    deinit {
+        if let token = timeObserverToken {
+            player.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
     }
 }
