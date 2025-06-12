@@ -9,18 +9,9 @@ struct ContentView: View {
     var body: some View {
         VStack {
             AttributedTextView(text: $model.highlightedTranscript, scrollRange: $model.scrollRange)
-            HStack {
-                VideoPlayer(player: model.player)
-                    .frame(height: 100)
-            }
-//            TextField("Generated", text: $model.generatedTranscript, axis: .vertical)
-//                .textFieldStyle(.roundedBorder)
-//                .frame(height: 200)
+            PlaybackControls(model: model)
         }
         .padding()
-        .task {
-            await model.load()
-        }
     }
 }
 
