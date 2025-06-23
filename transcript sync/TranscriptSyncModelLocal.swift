@@ -1,6 +1,7 @@
 import AVKit
 import Speech
 import SwiftSubtitles
+import NaturalLanguage
 
 class TranscriptSyncModelLocal: ObservableObject {
 
@@ -9,6 +10,7 @@ class TranscriptSyncModelLocal: ObservableObject {
         let characterRange: NSRange
     }
 
+    var transcriptModel: TranscriptModel?
 
     @Published var generatedTranscript: String = ""
     @Published var highlightedTranscript: NSAttributedString = NSAttributedString(string: "")
@@ -93,7 +95,7 @@ class TranscriptSyncModelLocal: ObservableObject {
             if self.lastHighlightedRange != currentWord.characterRange {
                 DispatchQueue.main.async {
                     self.currentTime = currentTime
-                    self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: currentWord.characterRange)
+                    self.highlightedTranscript = self.styleGeneratedTranscript(original: self.generatedTranscript, highlightRange: currentWord.characterRange)
                     self.scrollRange = currentWord.characterRange
                     self.lastHighlightedRange = currentWord.characterRange
                 }
@@ -137,13 +139,13 @@ class TranscriptSyncModelLocal: ObservableObject {
             self.timedWords.append(contentsOf: newTimedWords)
 
             if !newTimedWords.isEmpty && self.highlightedTranscript.length == 0 {
-                self.highlightedTranscript = self.styleGeneratedTranscript(highlightRange: nil)
+                self.highlightedTranscript = self.styleGeneratedTranscript(original: self.generatedTranscript, highlightRange: nil)
             }
         }
     }
 
-    func styleGeneratedTranscript(highlightRange: NSRange?) -> NSAttributedString {
-        let attributed = NSMutableAttributedString(string: generatedTranscript)
+    func styleGeneratedTranscript(original: String, highlightRange: NSRange?) -> NSAttributedString {
+        let attributed = NSMutableAttributedString(string: original)
         let fullRange = NSRange(location: 0, length: attributed.length)
         let normalAttributes: [NSAttributedString.Key: Any] = [
             .foregroundColor: UIColor.label,

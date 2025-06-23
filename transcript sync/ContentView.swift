@@ -8,7 +8,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack {
-            AttributedTextView(text: $model.highlightedTranscript, scrollRange: $model.scrollRange)
+            HStack {
+                AttributedTextView(text: $model.highlightedTranscript, scrollRange: $model.scrollRange)
+                AttributedTextView(text: $model.originalTranscript, scrollRange: Binding.constant(NSRange(location: NSNotFound, length: 0)))
+            }
             PlaybackControls(model: model)
         }
         .padding()
