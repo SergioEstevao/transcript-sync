@@ -9,8 +9,12 @@ class TranscriptSyncModelLocal: ObservableObject {
         let characterRange: NSRange
     }
 
+
     @Published var generatedTranscript: String = ""
     @Published var highlightedTranscript: NSAttributedString = NSAttributedString(string: "")
+
+    @Published var originalTranscript: NSAttributedString = NSAttributedString(string: "")
+
     @Published var player = AVPlayer()
 
     @Published var currentTime: Double = 0
@@ -24,18 +28,29 @@ class TranscriptSyncModelLocal: ObservableObject {
     private var timeObserverToken: Any?
 
     let audioURL: URL
+    let transcriptURL: URL
     let audioQueue = DispatchQueue(label: "audioQueue")
 
-    init(audioURL: URL) {
+    init(audioURL: URL, transcriptURL: URL) {
         self.audioURL = audioURL
+        self.transcriptURL = transcriptURL
     }
 
-    convenience init?(audioString: String) {
-        guard let audioURL = Bundle.main.url(forResource: audioString, withExtension: nil) else { return nil }
-        self.init(audioURL: audioURL)
+    convenience init?(audioString: String, transcriptString: String) {
+        guard let audioURL = Bundle.main.url(forResource: audioString, withExtension: nil),
+              let transcriptURL = Bundle.main.url(forResource: transcriptString, withExtension: nil)
+        else { return nil }
+
+        self.init(audioURL: audioURL, transcriptURL: transcriptURL)
     }
 
     func load() async {
+        if let transcriptModel = TranscriptModel.makeModel(from: transcriptURL) {
+            DispatchQueue.main.async {
+                self.transcriptModel = transcriptModel
+                self.originalTranscript = self.styleGeneratedTranscript(original: transcriptModel.attributedText.string, highlightRange: nil)
+            }
+        }
         await loadAudio()
     }
 
@@ -71,6 +86,7 @@ class TranscriptSyncModelLocal: ObservableObject {
             // Stay on this word until the next one starts
             if let range = Range(currentWord.characterRange, in: generatedTranscript) {
                 let text = generatedTranscript[range]
+                
                 print("Word: \(text) - Time: \(currentTime) - Range: \(self.timedWords[index].timeRange.start.seconds)-\(self.timedWords[index].timeRange.duration.seconds)")
             }
 
@@ -86,7 +102,9 @@ class TranscriptSyncModelLocal: ObservableObject {
     }
 
     func loadAudio() async {
-        timedWords.removeAll()
+        DispatchQueue.main.async {
+            self.timedWords.removeAll()
+        }
         await setupAudioPlay()
 
         Task.detached(priority: .userInitiated) {
@@ -140,14 +158,42 @@ class TranscriptSyncModelLocal: ObservableObject {
         return attributed
     }
 
+    func localeToUse() async -> Locale {
+        var localeToUse = Locale(identifier: ("en-us"))
+        guard let text = transcriptModel?.attributedText.string,
+              let nlLanguage = NLLanguageRecognizer.dominantLanguage(for: text) else {
+            return localeToUse
+        }
+
+
+
+        let detectedLocale = Locale(identifier: nlLanguage.rawValue)
+
+        for availableLocale in await SpeechTranscriber.supportedLocales {
+            if availableLocale.language.languageCode?.identifier == detectedLocale.language.languageCode?.identifier {
+                localeToUse = availableLocale
+                break
+            }
+        }
+        return localeToUse
+    }
+
     func setupSpeechAnalysis(from player: AVPlayer) async throws -> some AsyncSequence<SpeechTranscriber.Result, any Error> {
         // I set this up from the player so that the file could be streamed.
         // In theory, if we have the cached download, we could simplify this and not need to do any of the AVAssetReader stuff.
 
-        let locale = Locale(identifier: "en-us")
+        let locale = await localeToUse()
         var preset: SpeechTranscriber.Preset = .offlineTranscription
         preset.attributeOptions = [.audioTimeRange]
         let transcriber = SpeechTranscriber(locale: locale, preset: preset)
+
+        do {
+            try await ensureModel(transcriber: transcriber, locale: locale)
+        } catch let error as TranscriptionError {
+            print(error)
+            throw error
+        }
+
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
@@ -201,6 +247,71 @@ class TranscriptSyncModelLocal: ObservableObject {
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
             timeObserverToken = nil
+        }
+    }
+}
+
+extension TranscriptSyncModelLocal {
+    public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
+        guard await supported(locale: locale) else {
+            throw TranscriptionError.localeNotSupported
+        }
+
+        if await installed(locale: locale) {
+            return
+        } else {
+            try await downloadIfNeeded(for: transcriber)
+        }
+    }
+
+    func supported(locale: Locale) async -> Bool {
+        let supported = await SpeechTranscriber.supportedLocales
+        return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+    }
+
+    func installed(locale: Locale) async -> Bool {
+        let installed = await Set(SpeechTranscriber.installedLocales)
+        return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+    }
+
+    func downloadIfNeeded(for module: SpeechTranscriber) async throws {
+        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+            //self.downloadProgress = downloader.progress
+            try await downloader.downloadAndInstall()
+        }
+    }
+
+    func deallocate() async {
+        let allocated = await AssetInventory.allocatedLocales
+        for locale in allocated {
+            await AssetInventory.deallocate(locale: locale)
+        }
+    }
+}
+
+public enum TranscriptionError: Error {
+    case couldNotDownloadModel
+    case failedToSetupRecognitionStream
+    case invalidAudioDataType
+    case localeNotSupported
+    case noInternetForModelDownload
+    case audioFilePathNotFound
+
+    var descriptionString: String {
+        switch self {
+
+            case .couldNotDownloadModel:
+                return "Could not download the model."
+            case .failedToSetupRecognitionStream:
+                return "Could not set up the speech recognition stream."
+            case .invalidAudioDataType:
+                return "Unsupported audio format."
+            case .localeNotSupported:
+                return "This locale is not yet supported by SpeechAnalyzer."
+            case .noInternetForModelDownload:
+                return "The model could not be downloaded because the user is not connected to internet."
+            case .audioFilePathNotFound:
+                return "Couldn't write audio to file."
         }
     }
 }
