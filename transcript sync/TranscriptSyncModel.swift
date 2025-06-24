@@ -4,7 +4,7 @@ import Speech
 import SwiftSubtitles
 import NaturalLanguage
 
-class TranscriptSyncModel: ObservableObject {
+class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
 
     struct TimedWord {
         let timeRange: ClosedRange<Double>
@@ -18,12 +18,13 @@ class TranscriptSyncModel: ObservableObject {
 
     @Published var originalTranscript: NSAttributedString = NSAttributedString("Hello")
     @Published var generatedTranscript: String = "Hello"
+    @Published var highlightedTranscript: NSAttributedString = NSAttributedString(string: "")
     @Published var player = AVPlayer()
 
     @Published var currentTime: Double = 0
     @Published var duration: Double = 1
 
-    @Published var timedWords: [TimedWord] = []
+    var timedWords: [TimedWord] = []
 
     @Published var scrollRange: NSRange = NSRange(location: NSNotFound, length: 0)
 
@@ -98,7 +99,7 @@ class TranscriptSyncModel: ObservableObject {
 
             DispatchQueue.main.async {
                 self.currentTime = currentTime
-                self.originalTranscript = newText
+                self.highlightedTranscript = newText
                 self.scrollRange = wordMatch.characterRange
             }
         }

@@ -3,7 +3,7 @@ import Speech
 import SwiftSubtitles
 import NaturalLanguage
 
-class TranscriptSyncModelLocal: ObservableObject {
+class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
 
     struct TimedWord {
         let timeRange: CMTimeRange

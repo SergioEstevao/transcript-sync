@@ -1,8 +1,13 @@
 import SwiftUI
 import AVFoundation
 
+protocol TranscriptPlayer {
+    func load() async
+    var player: AVPlayer { get }
+}
+
 struct PlaybackControls: View {
-    var model: TranscriptSyncModelLocal
+    var model: TranscriptPlayer
 
     @State private var currentTime: Double = 0
     @State private var duration: Double = 1 // Default to avoid division by zero

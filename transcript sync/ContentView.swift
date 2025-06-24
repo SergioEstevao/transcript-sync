@@ -3,8 +3,8 @@ import AVKit
 
 struct ContentView: View {
 
-//    @StateObject private var model = TranscriptSyncModel(audioString: "Adidas_v_Puma_Battle.mp3", transcriptString: "Adidas_v_Puma_Battle.vtt")!
-    @StateObject private var model = TranscriptSyncModelLocal(audioString: "Adidas_v_Puma_Battle.mp3")!
+    @StateObject private var model = TranscriptSyncModel(audioString: "Adidas_v_Puma_Battle.mp3", transcriptString: "Adidas_v_Puma_Battle.vtt")!
+ //   @StateObject private var model = TranscriptSyncModelLocal(audioString: "mixordia_03_06_2025.mp3", transcriptString: "mixordia_03_06_2025.vtt")!
 
     var body: some View {
         VStack {
