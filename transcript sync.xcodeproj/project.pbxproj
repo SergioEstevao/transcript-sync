@@ -33,22 +33,9 @@
 		FFDB38522DE47C9800911B51 /* transcript syncUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "transcript syncUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		F52CAF662DF897F200EF0484 /* Exceptions for "transcript sync" folder in "transcript sync" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				SpokenWordTranscriber.swift,
-			);
-			target = FFDB383A2DE47C9700911B51 /* transcript sync */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		FFDB383D2DE47C9700911B51 /* transcript sync */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				F52CAF662DF897F200EF0484 /* Exceptions for "transcript sync" folder in "transcript sync" target */,
-			);
 			path = "transcript sync";
 			sourceTree = "<group>";
 		};
@@ -417,7 +404,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Q5R9EF4JAK;
+				DEVELOPMENT_TEAM = XZT327M4UP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
@@ -448,7 +435,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = Q5R9EF4JAK;
+				DEVELOPMENT_TEAM = XZT327M4UP;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
