@@ -182,6 +182,14 @@ class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
     func setupSpeechAnalysis(from player: AVPlayer) async throws -> some AsyncSequence<SpeechTranscriber.Result, any Error> {
         let locale = Locale(identifier: "en-us")
         let transcriber = SpeechTranscriber(locale: locale, preset: .timeIndexedLiveCaptioning)
+
+        do {
+            try await ensureModel(transcriber: transcriber, locale: locale)
+        } catch let error as TranscriptionError {
+            print(error)
+            throw error
+        }
+        
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
@@ -464,5 +472,43 @@ extension Data {
         }
 
         return buffer
+    }
+}
+
+extension TranscriptSyncModel {
+    public func ensureModel(transcriber: SpeechTranscriber, locale: Locale) async throws {
+        guard await supported(locale: locale) else {
+            throw TranscriptionError.localeNotSupported
+        }
+
+        if await installed(locale: locale) {
+            return
+        } else {
+            try await downloadIfNeeded(for: transcriber)
+        }
+    }
+
+    func supported(locale: Locale) async -> Bool {
+        let supported = await SpeechTranscriber.supportedLocales
+        return supported.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+    }
+
+    func installed(locale: Locale) async -> Bool {
+        let installed = await Set(SpeechTranscriber.installedLocales)
+        return installed.map { $0.identifier(.bcp47) }.contains(locale.identifier(.bcp47))
+    }
+
+    func downloadIfNeeded(for module: SpeechTranscriber) async throws {
+        if let downloader = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
+            //self.downloadProgress = downloader.progress
+            try await downloader.downloadAndInstall()
+        }
+    }
+
+    func deallocate() async {
+        let allocated = await AssetInventory.allocatedLocales
+        for locale in allocated {
+            await AssetInventory.deallocate(locale: locale)
+        }
     }
 }

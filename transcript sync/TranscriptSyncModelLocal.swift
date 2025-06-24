@@ -111,6 +111,8 @@ class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
         await setupAudioPlay()
 
         Task.detached(priority: .userInitiated) {
+            let start = Date.now
+            print("Start Speech Transcription: \(start)")
             let sequence = try! await self.setupSpeechAnalysis(from: self.player)
 
             do {
@@ -120,6 +122,7 @@ class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
             } catch {
                 print("Error during speech analysis: \(error)")
             }
+            print("End Speech Transcription: \(Date.now) - duration: \(start.timeIntervalSinceNow)")
         }
     }
 
@@ -197,7 +200,6 @@ class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
-
         let (inputSequence, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
         try await analyzer.start(inputSequence: inputSequence)
 
