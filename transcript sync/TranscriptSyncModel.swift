@@ -149,42 +149,6 @@ class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
     var currentPosition = 0
     var segmentsPosition = 0
 
-    func setupSpeechRecognition() {
-        var localeToUse = Locale(identifier: ("en-us"))
-        if let text = transcriptModel?.attributedText.string,
-           let nlLanguage = NLLanguageRecognizer.dominantLanguage(for: text) {
-            localeToUse = Locale(identifier: nlLanguage.rawValue)
-        }
-
-        guard let recognizer = SFSpeechRecognizer(locale: localeToUse),
-              recognizer.isAvailable
-        else {
-            return
-        }
-        recognizer.queue = transcriptQueue
-        recognizer.defaultTaskHint = .dictation
-        // Create and execute a speech recognition request for the audio file at the URL.
-        let request = SFSpeechURLRecognitionRequest(url: audioURL)
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        request.taskHint = .dictation
-        request.addsPunctuation = false
-        request.shouldReportPartialResults = !recognizer.supportsOnDeviceRecognition
-
-        let startDate = Date.now
-        recognizer.recognitionTask(with: request) { [weak self](result, error) in
-            guard let self, let result else {
-                if let error = error {
-                    print(error)
-                }
-                return
-            }
-//            handleRecognitionResult(result, locale: localeToUse)
-            if result.isFinal {
-                print("Finished: \(startDate.timeIntervalSinceNow)s")
-            }
-        }
-    }
-
     func setupSpeechAnalysis() async throws -> any AsyncSequence<SpeechTranscriber.Result, any Error> {
         let locale = Locale(identifier: "en-us")
 //        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.frequentFinalization], attributeOptions: [.audioTimeRange])
@@ -289,20 +253,12 @@ class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
 
         processRuns(transcriptModel: transcriptModel, result: result, locale: locale)
 
-//        let transcription = result.bestTranscription
         let transcription = result
-        // Only when metadata is available this partial transcript is established
-//        if let metadata = result.speechRecognitionMetadata {
-//            //print("\(metadata.speechStartTimestamp): \(transcription.formattedString)")
-//            speechRecognizedText += "\n" + transcription.formattedString
-//        }
         speechRecognizedText += "\n" + String(transcription.text.characters[...])
         if result.range.start > .zero && result.range.duration > .zero {
             allSegments.append(result)
         }
-//        allSegments.append(contentsOf: transcription.segments.filter({ segment in
-//            return segment.timestamp > 0 && segment.duration > 0
-//        }))
+
         // Do we have enough recognized words to try to do a search?
         guard allSegments.count > 0, allSegments.count >= wordCount else {
             return
@@ -441,32 +397,6 @@ class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
 
     var previousRange: NSRange?
 
-//    private func styleText(transcript: TranscriptModel, position: Double = -1) -> NSAttributedString {
-//        let formattedText = NSMutableAttributedString(attributedString: transcript.attributedText)
-//        formattedText.beginEditing()
-//        let normalStyle = makeStyle()
-//        var highlightStyle = normalStyle
-//        highlightStyle[.foregroundColor] = UIColor.red
-//
-//        let fullLength = NSRange(location: 0, length: formattedText.length)
-//        formattedText.addAttributes(normalStyle, range: fullLength)
-//
-//        if position > 0, let range = transcript.firstCue(containing: position)?.characterRange ?? previousRange {
-//            previousRange = range
-//            formattedText.addAttributes(highlightStyle, range: range)
-//        }
-//
-//        let speakerFont = UIFont.preferredFont(forTextStyle: .footnote)
-//        formattedText.enumerateAttribute(.transcriptSpeaker, in: fullLength, options: [.reverse, .longestEffectiveRangeNotRequired]) { value, range, _ in
-//            if value == nil {
-//                return
-//            }
-//            formattedText.addAttribute(.font, value: speakerFont, range: range)
-//        }
-//
-//        formattedText.endEditing()
-//        return formattedText
-//    }
     private func styleText(transcript: TranscriptModel, highlightRange: NSRange?) -> NSAttributedString {
         let formattedText = NSMutableAttributedString(attributedString: transcript.attributedText)
         formattedText.beginEditing()

@@ -167,8 +167,6 @@ class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
             return localeToUse
         }
 
-
-
         let detectedLocale = Locale(identifier: nlLanguage.rawValue)
 
         for availableLocale in await SpeechTranscriber.supportedLocales {
