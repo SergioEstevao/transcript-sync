@@ -4,6 +4,7 @@ import Speech
 import SwiftSubtitles
 import NaturalLanguage
 
+/// Transcript using iOS 26 Speech library and sync with server transcript
 class TranscriptSyncModel: ObservableObject, TranscriptPlayer {
 
     struct TimedWord {

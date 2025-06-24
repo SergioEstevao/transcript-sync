@@ -3,6 +3,7 @@ import Speech
 import SwiftSubtitles
 import NaturalLanguage
 
+/// Transcript using pre- iOS 26 Speech library and sync with server transcript
 class TranscriptSyncModelPreiOS26: ObservableObject, TranscriptPlayer {
 
     enum Constants {

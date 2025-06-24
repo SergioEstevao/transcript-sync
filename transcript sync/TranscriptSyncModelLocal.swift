@@ -3,6 +3,7 @@ import Speech
 import SwiftSubtitles
 import NaturalLanguage
 
+// Just do local transcript and do not sync with server model
 class TranscriptSyncModelLocal: ObservableObject, TranscriptPlayer  {
 
     struct TimedWord {
